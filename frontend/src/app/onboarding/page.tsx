@@ -186,16 +186,16 @@ function OnboardingContent() {
                 </div>
 
                 <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white text-center mb-2">
-                  Almost there! 🎉
+                  Looking good! 🎉
                 </h1>
                 <p className="text-slate-600 dark:text-slate-400 text-center mb-6">
-                  Enter your name to personalize your toolkit
+                  Just need a name to make it personal
                 </p>
 
                 {/* Name Input */}
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    What&apos;s your name?
+                    How should we call you?
                   </label>
                   <input
                     type="text"
@@ -244,16 +244,16 @@ function OnboardingContent() {
                 exit={{ opacity: 0, x: -20 }}
               >
                 <h1 className="text-3xl font-bold text-slate-900 dark:text-white text-center mb-2">
-                  Let&apos;s build your AI toolkit
+                  Hey there! 👋
                 </h1>
                 <p className="text-slate-600 dark:text-slate-400 text-center mb-8">
-                  Tell us about yourself to get personalized recommendations
+                  Let&apos;s find the perfect AI tools for your workflow
                 </p>
 
                 {/* Name Input */}
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    What&apos;s your name?
+                    First, what should we call you?
                   </label>
                   <input
                     type="text"
@@ -267,7 +267,7 @@ function OnboardingContent() {
                 {/* Profession Selection */}
                 <div className="mb-8">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
-                    What&apos;s your profession?
+                    And what do you do? 💼
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {PROFESSIONS.map((prof) => (
@@ -358,10 +358,10 @@ function OnboardingContent() {
                 )}
 
                 <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white text-center mb-2">
-                  {name ? `Hey ${name}! 👋` : "What do you enjoy?"}
+                  {name ? `Now the fun part, ${name}! 🌴` : "Now the fun part! 🌴"}
                 </h1>
                 <p className="text-slate-600 dark:text-slate-400 text-center mb-6">
-                  Select your hobbies & interests
+                  What do you love doing on weekends?
                 </p>
 
                 {/* Hobby Grid */}
@@ -377,7 +377,7 @@ function OnboardingContent() {
                     value={customHobby}
                     onChange={(e) => setCustomHobby(e.target.value)}
                     className="w-full h-12 px-4 rounded-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 text-center"
-                    placeholder="Or type your own hobby..."
+                    placeholder="Or tell us something different..."
                   />
                   {customHobby.trim() && selectedHobbies.length === 0 && (
                     <p className="text-center text-xs text-green-600 mt-2">
@@ -408,7 +408,7 @@ function OnboardingContent() {
 
                 {!name.trim() && (selectedHobbies.length > 0 || customHobby.trim()) && (
                   <p className="text-center text-xs text-orange-500 mt-2">
-                    ↑ Please enter your name above to continue
+                    ↑ Don&apos;t forget to add your name above!
                   </p>
                 )}
               </motion.div>
