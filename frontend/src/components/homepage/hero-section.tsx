@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { fadeUp, staggerContainer } from "@/lib/animations";
 import { DemoPreview } from "./demo-preview";
-import { smartGenerate } from "@/lib/api";
+import { parseInput } from "@/lib/api";
 
 const STATS = [
   { value: "2,847+", label: "AI Tools Indexed" },
@@ -25,42 +25,18 @@ export function HeroSection() {
     setIsLoading(true);
     
     try {
-      // 🤖 Smart Generate: AI parses input + generates toolkit in one step
-      const toolkit = await smartGenerate(value);
+      // 🤖 AI parses natural language to extract profession + hobby
+      const parsed = await parseInput(value);
       
-      // Store generated toolkit data
-      const toolkitData = {
-        ...toolkit,
-        workContext: `${toolkit.profession} Workflow`,
-        specs: {
-          ...toolkit.specs,
-          updatedAt: "Dec 2025",
-        },
-        faq: [
-          {
-            question: `Why these specific tools for ${toolkit.profession}s?`,
-            answer: `Our SmartMatch™ algorithm analyzed thousands of ${toolkit.profession} workflows to identify the most impactful AI tools.`,
-          },
-          {
-            question: `How does the ${toolkit.lifeContext} integration work?`,
-            answer: `We match your hobby interests with AI tools that enhance those activities.`,
-          },
-          {
-            question: "Can I customize this toolkit?",
-            answer: "Absolutely! After viewing your toolkit, you can swap tools, add new ones, or remove tools that don't fit your needs.",
-          },
-        ],
-        relatedProfessions: [],
-      };
+      // Store parsed intent for onboarding
+      sessionStorage.setItem("parsed_intent", JSON.stringify(parsed));
       
-      sessionStorage.setItem("generated_toolkit", JSON.stringify(toolkitData));
-      
-      // Navigate directly to toolkit page
-      router.push(`/u/${toolkit.slug}`);
+      // Go to onboarding - but skip to name input step (profession/hobby already parsed)
+      router.push(`/onboarding?mode=quick&profession=${parsed.profession}&hobby=${parsed.hobby}`);
       
     } catch (error) {
-      console.error("Smart generate failed:", error);
-      // Fallback: Go to onboarding for manual selection
+      console.error("Parse failed, using manual flow:", error);
+      // Fallback: Go to onboarding for full manual selection
       sessionStorage.setItem("persona_input", value);
       router.push("/onboarding");
     } finally {

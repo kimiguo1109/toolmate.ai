@@ -32,14 +32,34 @@ function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  // Check if profession is passed via URL (from personas page)
+  // Check URL parameters
+  const mode = searchParams.get("mode"); // "quick" = AI already parsed
   const professionFromUrl = searchParams.get("profession");
+  const hobbyFromUrl = searchParams.get("hobby");
   
-  const [step, setStep] = useState(professionFromUrl ? 2 : 1);
+  // Quick mode: AI already parsed profession + hobby, just need name
+  const isQuickMode = mode === "quick" && professionFromUrl && hobbyFromUrl;
+  
+  const [step, setStep] = useState(isQuickMode ? 3 : professionFromUrl ? 2 : 1);
   const [name, setName] = useState("");
   const [profession, setProfession] = useState(professionFromUrl || "");
-  const [selectedHobbies, setSelectedHobbies] = useState<string[]>([]);
+  const [selectedHobbies, setSelectedHobbies] = useState<string[]>(hobbyFromUrl ? [hobbyFromUrl] : []);
   const [customHobby, setCustomHobby] = useState("");
+  const [parsedIntent, setParsedIntent] = useState<{professionLabel?: string; hobbyLabel?: string} | null>(null);
+
+  // Load parsed intent from AI (for quick mode display)
+  useEffect(() => {
+    const stored = sessionStorage.getItem("parsed_intent");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setParsedIntent(parsed);
+        sessionStorage.removeItem("parsed_intent");
+      } catch (e) {
+        console.error("Failed to parse intent");
+      }
+    }
+  }, []);
 
   // Load preselected hobby from trending pills
   useEffect(() => {
@@ -72,11 +92,18 @@ function OnboardingContent() {
     }
   }, [professionFromUrl]);
 
-  const progress = step === 1 ? (name && profession ? 40 : 20) : Math.min(60 + selectedHobbies.length * 10, 95);
+  // Progress calculation
+  const progress = step === 1 
+    ? (name && profession ? 40 : 20) 
+    : step === 2 
+      ? Math.min(60 + selectedHobbies.length * 10, 95)
+      : (name.trim() ? 95 : 70); // Step 3 (quick mode)
 
   const canProceedStep1 = name.trim().length > 0 && profession !== "";
   // Allow proceeding if hobbies selected OR custom hobby entered, AND name is filled
   const canProceedStep2 = (selectedHobbies.length > 0 || customHobby.trim().length > 0) && name.trim().length > 0;
+  // Quick mode: just need name
+  const canProceedQuickMode = name.trim().length > 0;
 
   const handleStep1Continue = () => {
     if (!canProceedStep1) return;
@@ -84,7 +111,10 @@ function OnboardingContent() {
   };
 
   const handleGenerate = () => {
-    if (!canProceedStep2) return;
+    // Quick mode only needs name
+    if (isQuickMode && !canProceedQuickMode) return;
+    // Normal mode needs hobbies
+    if (!isQuickMode && !canProceedStep2) return;
 
     // Use custom hobby if no preset hobby selected
     const primaryHobby = selectedHobbies[0] || customHobby.toLowerCase().replace(/\s+/g, "-") || "general";
@@ -127,12 +157,90 @@ function OnboardingContent() {
           <motion.div variants={fadeUp} className="mb-6">
             <ProgressBar progress={progress} />
             <p className="text-center text-sm text-slate-500 mt-2">
-              Step {step} of 2
+              {isQuickMode ? "Almost there!" : `Step ${step} of 2`}
             </p>
           </motion.div>
 
           <AnimatePresence mode="wait">
-            {step === 1 ? (
+            {/* Step 3: Quick Mode - Just Name Input (AI already parsed profession + hobby) */}
+            {step === 3 ? (
+              <motion.div
+                key="step3"
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-8 shadow-sm"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+              >
+                {/* AI Parsed Badge */}
+                <div className="flex justify-center mb-6">
+                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 dark:bg-green-900/30 rounded-full text-green-700 dark:text-green-400 text-sm font-medium">
+                    <span className="material-symbols-outlined text-base">auto_awesome</span>
+                    AI Detected Your Profile
+                  </div>
+                </div>
+
+                {/* Show parsed profession + hobby */}
+                <div className="flex flex-wrap justify-center gap-3 mb-6">
+                  <span className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full text-primary text-sm font-medium">
+                    <span className="material-symbols-outlined text-base">
+                      {PROFESSIONS.find(p => p.id === profession)?.icon || "work"}
+                    </span>
+                    {parsedIntent?.professionLabel || PROFESSIONS.find(p => p.id === profession)?.label || profession}
+                  </span>
+                  <span className="text-slate-400">+</span>
+                  <span className="inline-flex items-center gap-2 px-4 py-2 bg-orange-100 dark:bg-orange-900/30 rounded-full text-orange-600 dark:text-orange-400 text-sm font-medium">
+                    <span className="material-symbols-outlined text-base">interests</span>
+                    {parsedIntent?.hobbyLabel || selectedHobbies[0]?.replace("-", " ").replace(/\b\w/g, l => l.toUpperCase()) || "Hobby"}
+                  </span>
+                </div>
+
+                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white text-center mb-2">
+                  One last thing! 👋
+                </h1>
+                <p className="text-slate-600 dark:text-slate-400 text-center mb-6">
+                  What should we call you?
+                </p>
+
+                {/* Name Input */}
+                <div className="mb-6">
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && canProceedQuickMode && handleGenerate()}
+                    className="w-full h-14 px-6 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-lg text-center"
+                    placeholder="Your name (e.g., Alex, Kimi, Sarah...)"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Matching Indicator */}
+                <MatchingIndicator selectedCount={1} />
+
+                {/* Generate Button */}
+                <motion.button
+                  onClick={handleGenerate}
+                  disabled={!canProceedQuickMode}
+                  className={`w-full h-14 rounded-full font-bold text-lg mt-6 transition-all ${
+                    canProceedQuickMode
+                      ? "bg-primary text-white hover:opacity-90"
+                      : "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed"
+                  }`}
+                  whileHover={canProceedQuickMode ? { scale: 1.02, boxShadow: "0 4px 20px rgba(43, 108, 238, 0.4)" } : {}}
+                  whileTap={canProceedQuickMode ? { scale: 0.98 } : {}}
+                >
+                  Generate My Toolkit ✨
+                </motion.button>
+
+                {/* Switch to manual mode */}
+                <button
+                  onClick={() => setStep(1)}
+                  className="w-full text-center text-sm text-slate-500 hover:text-primary mt-4 transition-colors"
+                >
+                  Wrong profession? Start over →
+                </button>
+              </motion.div>
+            ) : step === 1 ? (
               /* Step 1: Name & Profession */
               <motion.div
                 key="step1"
