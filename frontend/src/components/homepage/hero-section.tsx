@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { fadeUp, staggerContainer } from "@/lib/animations";
 import { DemoPreview } from "./demo-preview";
+import { smartGenerate } from "@/lib/api";
 
 const STATS = [
   { value: "2,847+", label: "AI Tools Indexed" },
@@ -15,12 +16,55 @@ const STATS = [
 export function HeroSection() {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
-  const handleGenerate = () => {
-    if (value.trim()) {
+  const handleGenerate = async () => {
+    if (!value.trim()) return;
+    
+    setIsLoading(true);
+    
+    try {
+      // 🤖 Smart Generate: AI parses input + generates toolkit in one step
+      const toolkit = await smartGenerate(value);
+      
+      // Store generated toolkit data
+      const toolkitData = {
+        ...toolkit,
+        workContext: `${toolkit.profession} Workflow`,
+        specs: {
+          ...toolkit.specs,
+          updatedAt: "Dec 2025",
+        },
+        faq: [
+          {
+            question: `Why these specific tools for ${toolkit.profession}s?`,
+            answer: `Our SmartMatch™ algorithm analyzed thousands of ${toolkit.profession} workflows to identify the most impactful AI tools.`,
+          },
+          {
+            question: `How does the ${toolkit.lifeContext} integration work?`,
+            answer: `We match your hobby interests with AI tools that enhance those activities.`,
+          },
+          {
+            question: "Can I customize this toolkit?",
+            answer: "Absolutely! After viewing your toolkit, you can swap tools, add new ones, or remove tools that don't fit your needs.",
+          },
+        ],
+        relatedProfessions: [],
+      };
+      
+      sessionStorage.setItem("generated_toolkit", JSON.stringify(toolkitData));
+      
+      // Navigate directly to toolkit page
+      router.push(`/u/${toolkit.slug}`);
+      
+    } catch (error) {
+      console.error("Smart generate failed:", error);
+      // Fallback: Go to onboarding for manual selection
       sessionStorage.setItem("persona_input", value);
       router.push("/onboarding");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -85,11 +129,29 @@ export function HeroSection() {
               <div className="flex items-center justify-center rounded-r-full border-y border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-900 pr-2">
                 <motion.button
                   onClick={handleGenerate}
-                  className="flex min-w-[100px] cursor-pointer items-center justify-center rounded-full h-12 px-6 bg-primary text-white text-base font-bold leading-normal"
-                  whileHover={{ scale: 1.05, boxShadow: "0 4px 14px rgba(43, 108, 238, 0.4)" }}
-                  whileTap={{ scale: 0.98 }}
+                  disabled={isLoading || !value.trim()}
+                  className={`flex min-w-[100px] cursor-pointer items-center justify-center gap-2 rounded-full h-12 px-6 text-white text-base font-bold leading-normal transition-all ${
+                    isLoading || !value.trim() 
+                      ? "bg-primary/50 cursor-not-allowed" 
+                      : "bg-primary"
+                  }`}
+                  whileHover={!isLoading && value.trim() ? { scale: 1.05, boxShadow: "0 4px 14px rgba(43, 108, 238, 0.4)" } : {}}
+                  whileTap={!isLoading && value.trim() ? { scale: 0.98 } : {}}
                 >
-                  Generate
+                  {isLoading ? (
+                    <>
+                      <motion.span
+                        className="material-symbols-outlined text-lg"
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      >
+                        progress_activity
+                      </motion.span>
+                      <span>AI Parsing...</span>
+                    </>
+                  ) : (
+                    "Generate"
+                  )}
                 </motion.button>
               </div>
             </motion.div>

@@ -178,6 +178,135 @@ JSON:"""
 
         return prompt
     
+    async def parse_intent(
+        self,
+        user_input: str
+    ) -> Dict[str, Any]:
+        """
+        Parse natural language input to extract profession and hobby
+        
+        Args:
+            user_input: Natural language like "I am a Product Manager who loves hiking"
+        
+        Returns:
+            Parsed intent with profession, hobby, and optional name
+        """
+        prompt = f"""Parse this user input and extract their profession and hobby/interest.
+
+User input: "{user_input}"
+
+Output ONLY this JSON (no markdown, no explanation):
+{{"profession":"slug-format","professionLabel":"Human Readable","hobby":"slug-format","hobbyLabel":"Human Readable","name":"extracted name or null","confidence":0.95}}
+
+Rules:
+- profession slug: lowercase, hyphenated (e.g., "product-manager", "software-developer")
+- hobby slug: lowercase, single word preferred (e.g., "hiking", "gaming", "cooking")
+- name: extract if mentioned, otherwise null
+- confidence: 0.0-1.0 based on how clear the input is
+
+Common professions: product-manager, developer, designer, marketer, writer, student, entrepreneur, data-scientist, sales, hr-manager, finance, customer-support, consultant, researcher, teacher
+
+Common hobbies: hiking, gaming, cooking, reading, fitness, traveling, coding, photography, music, art
+
+If unclear, make reasonable assumptions. Always return valid JSON.
+
+JSON:"""
+
+        try:
+            logger.info(f"🔍 Parsing intent: {user_input[:50]}...")
+            response = await self.call_api(prompt, temperature=0.1, max_tokens=256)
+            
+            # Clean response (remove markdown if any)
+            response = response.strip()
+            if response.startswith("```"):
+                response = response.split("```")[1]
+                if response.startswith("json"):
+                    response = response[4:]
+            
+            parsed = json.loads(response)
+            logger.info(f"✅ Parsed: {parsed.get('profession')} + {parsed.get('hobby')}")
+            
+            return parsed
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse intent JSON: {e}")
+            # Fallback: try to extract manually
+            return self._fallback_parse(user_input)
+        except Exception as e:
+            logger.error(f"Intent parsing failed: {e}")
+            return self._fallback_parse(user_input)
+    
+    def _fallback_parse(self, user_input: str) -> Dict[str, Any]:
+        """Fallback parser when AI fails"""
+        user_input_lower = user_input.lower()
+        
+        # Simple keyword matching
+        professions = {
+            "product manager": "product-manager",
+            "pm": "product-manager",
+            "developer": "developer",
+            "software engineer": "developer",
+            "programmer": "developer",
+            "designer": "designer",
+            "ux designer": "designer",
+            "marketer": "marketer",
+            "marketing": "marketer",
+            "writer": "writer",
+            "content": "writer",
+            "student": "student",
+            "entrepreneur": "entrepreneur",
+            "founder": "entrepreneur",
+            "data scientist": "data-scientist",
+            "sales": "sales",
+            "hr": "hr-manager",
+            "finance": "finance",
+            "support": "customer-support",
+        }
+        
+        hobbies = {
+            "hiking": "hiking",
+            "hike": "hiking",
+            "gaming": "gaming",
+            "game": "gaming",
+            "cook": "cooking",
+            "cooking": "cooking",
+            "read": "reading",
+            "reading": "reading",
+            "fitness": "fitness",
+            "gym": "fitness",
+            "workout": "fitness",
+            "travel": "traveling",
+            "traveling": "traveling",
+            "code": "coding",
+            "coding": "coding",
+            "photo": "photography",
+            "photography": "photography",
+            "music": "music",
+            "art": "art",
+        }
+        
+        detected_profession = "product-manager"  # default
+        detected_hobby = "general"  # default
+        
+        for keyword, slug in professions.items():
+            if keyword in user_input_lower:
+                detected_profession = slug
+                break
+        
+        for keyword, slug in hobbies.items():
+            if keyword in user_input_lower:
+                detected_hobby = slug
+                break
+        
+        return {
+            "profession": detected_profession,
+            "professionLabel": detected_profession.replace("-", " ").title(),
+            "hobby": detected_hobby,
+            "hobbyLabel": detected_hobby.replace("-", " ").title(),
+            "name": None,
+            "confidence": 0.5
+        }
+
     async def suggest_tools(
         self,
         query: str,

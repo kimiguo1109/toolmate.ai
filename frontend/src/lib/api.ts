@@ -147,3 +147,52 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
+export interface ParsedIntent {
+  profession: string;
+  professionLabel: string;
+  hobby: string;
+  hobbyLabel: string;
+  name: string | null;
+  confidence: number;
+}
+
+/**
+ * Parse natural language input to extract profession and hobby
+ */
+export async function parseInput(input: string): Promise<ParsedIntent> {
+  const response = await fetch(`${API_BASE_URL}/api/parse`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ input }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Parse failed" }));
+    throw new Error(error.detail || `API error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Smart generate: Parse input + Generate toolkit in one step
+ */
+export async function smartGenerate(input: string): Promise<ToolkitResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/smart-generate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ input }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Generation failed" }));
+    throw new Error(error.detail || `API error: ${response.status}`);
+  }
+
+  return response.json();
+}
+

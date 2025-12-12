@@ -37,9 +37,13 @@ class Settings(BaseSettings):
     RATE_LIMIT_REQUESTS: int = 100
     RATE_LIMIT_WINDOW: int = 60  # seconds
     
-    # Proxy (enabled for China network)
-    USE_PROXY: bool = True
-    HTTP_PROXY: str = "http://127.0.0.1:7890"
+    # Proxy (optional, for users behind firewall)
+    USE_PROXY: bool = False  # Set to True in .env if needed
+    HTTP_PROXY: str = "http://127.0.0.1:7890"  # Configure in .env if needed
+    
+    # Supabase Configuration
+    SUPABASE_URL: str = ""  # Set in .env file
+    SUPABASE_ANON_KEY: str = ""  # Set in .env file
     
     class Config:
         env_file = ".env"

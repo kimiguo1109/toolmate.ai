@@ -104,6 +104,79 @@ async def generate_toolkit(request: GenerateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class ParseRequest(BaseModel):
+    """Natural language input parsing request"""
+    input: str = Field(..., description="Natural language input", example="I am a Product Manager who loves hiking")
+
+
+class ParseResponse(BaseModel):
+    """Parsed intent response"""
+    profession: str
+    professionLabel: str
+    hobby: str
+    hobbyLabel: str
+    name: Optional[str] = None
+    confidence: float
+
+
+@router.post("/parse", response_model=ParseResponse)
+async def parse_input(request: ParseRequest):
+    """
+    Parse natural language input to extract profession and hobby using AI
+    
+    This endpoint uses Gemini AI to understand user intent from free-form text.
+    
+    Examples:
+    - "I am a Product Manager who loves hiking" → {profession: "product-manager", hobby: "hiking"}
+    - "Software engineer, gaming enthusiast" → {profession: "developer", hobby: "gaming"}
+    - "Designer passionate about photography" → {profession: "designer", hobby: "photography"}
+    """
+    try:
+        logger.info(f"📥 Parse request: {request.input[:50]}...")
+        
+        parsed = await gemini_service.parse_intent(request.input)
+        
+        logger.info(f"✅ Parsed: {parsed.get('profession')} + {parsed.get('hobby')}")
+        return parsed
+        
+    except Exception as e:
+        logger.error(f"❌ Parse failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/smart-generate", response_model=ToolkitResponse)
+async def smart_generate(request: ParseRequest):
+    """
+    One-step toolkit generation from natural language input
+    
+    Combines parse + generate in a single call:
+    1. AI parses the input to extract profession + hobby
+    2. Generates personalized toolkit based on parsed intent
+    
+    Example input: "I am a Product Manager who loves hiking"
+    """
+    try:
+        logger.info(f"🚀 Smart generate: {request.input[:50]}...")
+        
+        # Step 1: Parse intent
+        parsed = await gemini_service.parse_intent(request.input)
+        
+        # Step 2: Generate toolkit
+        toolkit = await toolkit_generator.generate(
+            profession=parsed.get("profession", "product-manager"),
+            hobby=parsed.get("hobby", "general"),
+            name=parsed.get("name"),
+            use_ai=True
+        )
+        
+        logger.info(f"✅ Smart generated: {toolkit.get('slug')}")
+        return toolkit
+        
+    except Exception as e:
+        logger.error(f"❌ Smart generation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/suggest")
 async def suggest_tools(
     query: str = Query(..., description="Search query or use case"),
