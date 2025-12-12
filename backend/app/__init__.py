@@ -1,0 +1,4 @@
+"""
+MaxMate.ai Backend Application
+"""
+

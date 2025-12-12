@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/maxmate-ai/design.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2025-12-10T08:26:30.510Z",
+      "trigger": "initial",
+      "approvalId": "approval_1765355190498_ss5ooef92",
+      "approvalTitle": "MaxMate.ai Technical Design Document - 技术设计文档"
+    }
+  ]
+}
