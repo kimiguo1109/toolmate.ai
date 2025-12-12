@@ -162,54 +162,48 @@ function OnboardingContent() {
           </motion.div>
 
           <AnimatePresence mode="wait">
-            {/* Step 3: Quick Mode - Just Name Input (AI already parsed profession + hobby) */}
+            {/* Step 3: Quick Mode - Just Name Input (profession + hobby already set) */}
             {step === 3 ? (
               <motion.div
                 key="step3"
                 className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-8 shadow-sm"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
               >
-                {/* AI Parsed Badge */}
-                <div className="flex justify-center mb-6">
-                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 dark:bg-green-900/30 rounded-full text-green-700 dark:text-green-400 text-sm font-medium">
-                    <span className="material-symbols-outlined text-base">auto_awesome</span>
-                    AI Detected Your Profile
-                  </div>
-                </div>
-
-                {/* Show parsed profession + hobby */}
-                <div className="flex flex-wrap justify-center gap-3 mb-6">
+                {/* Selected Profile Badge - same style as Step 2 */}
+                <div className="flex justify-center mb-4">
                   <span className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full text-primary text-sm font-medium">
                     <span className="material-symbols-outlined text-base">
                       {PROFESSIONS.find(p => p.id === profession)?.icon || "work"}
                     </span>
                     {parsedIntent?.professionLabel || PROFESSIONS.find(p => p.id === profession)?.label || profession}
-                  </span>
-                  <span className="text-slate-400">+</span>
-                  <span className="inline-flex items-center gap-2 px-4 py-2 bg-orange-100 dark:bg-orange-900/30 rounded-full text-orange-600 dark:text-orange-400 text-sm font-medium">
-                    <span className="material-symbols-outlined text-base">interests</span>
-                    {parsedIntent?.hobbyLabel || selectedHobbies[0]?.replace("-", " ").replace(/\b\w/g, l => l.toUpperCase()) || "Hobby"}
+                    <span className="text-slate-400 mx-1">+</span>
+                    <span className="text-orange-500">
+                      {parsedIntent?.hobbyLabel || selectedHobbies[0]?.replace("-", " ").replace(/\b\w/g, l => l.toUpperCase()) || "Hobby"}
+                    </span>
                   </span>
                 </div>
 
                 <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white text-center mb-2">
-                  One last thing! 👋
+                  Almost there! 🎉
                 </h1>
                 <p className="text-slate-600 dark:text-slate-400 text-center mb-6">
-                  What should we call you?
+                  Enter your name to personalize your toolkit
                 </p>
 
                 {/* Name Input */}
                 <div className="mb-6">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    What&apos;s your name?
+                  </label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && canProceedQuickMode && handleGenerate()}
-                    className="w-full h-14 px-6 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-lg text-center"
-                    placeholder="Your name (e.g., Alex, Kimi, Sarah...)"
+                    className="w-full h-14 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-lg"
+                    placeholder="e.g., Alex, Kimi, Sarah..."
                     autoFocus
                   />
                 </div>
@@ -232,12 +226,12 @@ function OnboardingContent() {
                   Generate My Toolkit ✨
                 </motion.button>
 
-                {/* Switch to manual mode */}
+                {/* Switch to manual mode - more subtle */}
                 <button
                   onClick={() => setStep(1)}
-                  className="w-full text-center text-sm text-slate-500 hover:text-primary mt-4 transition-colors"
+                  className="w-full text-center text-sm text-slate-400 hover:text-slate-600 mt-4 transition-colors"
                 >
-                  Wrong profession? Start over →
+                  Change selection
                 </button>
               </motion.div>
             ) : step === 1 ? (
