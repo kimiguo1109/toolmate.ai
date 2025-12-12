@@ -183,7 +183,7 @@ JSON:"""
         user_input: str
     ) -> Dict[str, Any]:
         """
-        Parse natural language input to extract profession and hobby
+        Parse natural language input to extract profession and hobby using LLM
         
         Args:
             user_input: Natural language like "I am a Product Manager who loves hiking"
@@ -191,122 +191,161 @@ JSON:"""
         Returns:
             Parsed intent with profession, hobby, and optional name
         """
-        prompt = f"""Parse this user input and extract their profession and hobby/interest.
+        # Simple, clear prompt for reliable JSON output
+        prompt = f"""Extract profession and hobby from this text. Return JSON only.
 
-User input: "{user_input}"
+Text: "{user_input}"
 
-Output ONLY this JSON (no markdown, no explanation):
-{{"profession":"slug-format","professionLabel":"Human Readable","hobby":"slug-format","hobbyLabel":"Human Readable","name":"extracted name or null","confidence":0.95}}
+Return this exact format:
+{{"profession":"lowercase-slug","professionLabel":"Display Name","hobby":"lowercase-slug","hobbyLabel":"Display Name","name":null,"confidence":0.9}}
 
-Rules:
-- profession slug: lowercase, hyphenated (e.g., "product-manager", "software-developer")
-- hobby slug: lowercase, single word preferred (e.g., "hiking", "gaming", "cooking")
-- name: extract if mentioned, otherwise null
-- confidence: 0.0-1.0 based on how clear the input is
+Example inputs and outputs:
+- "I am a software engineer who loves gaming" → {{"profession":"software-engineer","professionLabel":"Software Engineer","hobby":"gaming","hobbyLabel":"Gaming","name":null,"confidence":0.95}}
+- "PM passionate about hiking" → {{"profession":"product-manager","professionLabel":"Product Manager","hobby":"hiking","hobbyLabel":"Hiking","name":null,"confidence":0.9}}
+- "Game designer, fitness enthusiast" → {{"profession":"game-designer","professionLabel":"Game Designer","hobby":"fitness","hobbyLabel":"Fitness","name":null,"confidence":0.9}}
 
-Common professions: product-manager, developer, designer, marketer, writer, student, entrepreneur, data-scientist, sales, hr-manager, finance, customer-support, consultant, researcher, teacher
-
-Common hobbies: hiking, gaming, cooking, reading, fitness, traveling, coding, photography, music, art
-
-If unclear, make reasonable assumptions. Always return valid JSON.
-
-JSON:"""
+Your JSON (no explanation, no markdown):"""
 
         try:
             logger.info(f"🔍 Parsing intent: {user_input[:50]}...")
-            response = await self.call_api(prompt, temperature=0.1, max_tokens=256)
+            # Gemini 2.5 uses tokens for "thinking", so we need more tokens
+            response = await self.call_api(prompt, temperature=0.0, max_tokens=500)
             
-            # Clean response (remove markdown if any)
-            response = response.strip()
-            if response.startswith("```"):
-                response = response.split("```")[1]
-                if response.startswith("json"):
-                    response = response[4:]
+            # Clean response
+            parsed = self._extract_json_from_response(response)
             
-            parsed = json.loads(response)
-            logger.info(f"✅ Parsed: {parsed.get('profession')} + {parsed.get('hobby')}")
+            if parsed:
+                logger.info(f"✅ Parsed: {parsed.get('profession')} + {parsed.get('hobby')}")
+                return parsed
+            else:
+                logger.warning(f"⚠️ Could not extract JSON, trying regex fallback")
+                return self._regex_extract(response, user_input)
             
-            return parsed
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse intent JSON: {e}")
-            # Fallback: try to extract manually
-            return self._fallback_parse(user_input)
         except Exception as e:
             logger.error(f"Intent parsing failed: {e}")
-            return self._fallback_parse(user_input)
+            # Final fallback: ask LLM in a simpler way
+            return await self._simple_parse(user_input)
     
-    def _fallback_parse(self, user_input: str) -> Dict[str, Any]:
-        """Fallback parser when AI fails"""
-        user_input_lower = user_input.lower()
+    def _extract_json_from_response(self, response: str) -> Optional[Dict[str, Any]]:
+        """Extract and parse JSON from LLM response"""
+        import re
         
-        # Simple keyword matching
-        professions = {
-            "product manager": "product-manager",
-            "pm": "product-manager",
-            "developer": "developer",
-            "software engineer": "developer",
-            "programmer": "developer",
-            "designer": "designer",
-            "ux designer": "designer",
-            "marketer": "marketer",
-            "marketing": "marketer",
-            "writer": "writer",
-            "content": "writer",
-            "student": "student",
-            "entrepreneur": "entrepreneur",
-            "founder": "entrepreneur",
-            "data scientist": "data-scientist",
-            "sales": "sales",
-            "hr": "hr-manager",
-            "finance": "finance",
-            "support": "customer-support",
-        }
+        original_response = response
+        response = response.strip()
         
-        hobbies = {
-            "hiking": "hiking",
-            "hike": "hiking",
-            "gaming": "gaming",
-            "game": "gaming",
-            "cook": "cooking",
-            "cooking": "cooking",
-            "read": "reading",
-            "reading": "reading",
-            "fitness": "fitness",
-            "gym": "fitness",
-            "workout": "fitness",
-            "travel": "traveling",
-            "traveling": "traveling",
-            "code": "coding",
-            "coding": "coding",
-            "photo": "photography",
-            "photography": "photography",
-            "music": "music",
-            "art": "art",
-        }
+        logger.debug(f"🔍 Raw LLM response: {response[:200]}...")
         
-        detected_profession = "product-manager"  # default
-        detected_hobby = "general"  # default
+        # Try direct parse first
+        try:
+            return json.loads(response)
+        except Exception as e:
+            logger.debug(f"Direct parse failed: {e}")
         
-        for keyword, slug in professions.items():
-            if keyword in user_input_lower:
-                detected_profession = slug
-                break
+        # Remove markdown code blocks
+        if "```" in response:
+            match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(1))
+                except:
+                    pass
         
-        for keyword, slug in hobbies.items():
-            if keyword in user_input_lower:
-                detected_hobby = slug
-                break
+        # Try to find any JSON object with profession key
+        match = re.search(r'\{[^{}]*"profession"[^{}]*\}', response, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except:
+                pass
+        
+        # Try more aggressive JSON extraction - find first { to last }
+        first_brace = response.find('{')
+        last_brace = response.rfind('}')
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            json_str = response[first_brace:last_brace + 1]
+            try:
+                return json.loads(json_str)
+            except:
+                # Try to fix common issues
+                json_str = json_str.replace("'", '"')  # Single to double quotes
+                json_str = re.sub(r',\s*}', '}', json_str)  # Remove trailing comma
+                try:
+                    return json.loads(json_str)
+                except:
+                    pass
+        
+        logger.warning(f"⚠️ Could not extract JSON from: {original_response[:100]}...")
+        return None
+    
+    def _regex_extract(self, response: str, original_input: str) -> Dict[str, Any]:
+        """Extract profession and hobby using regex patterns from LLM response"""
+        import re
+        
+        logger.debug(f"🔍 Full response for regex: {response}")
+        
+        # Try to extract values from malformed JSON
+        profession_match = re.search(r'"profession"\s*:\s*"([^"]+)"', response)
+        profession_label_match = re.search(r'"professionLabel"\s*:\s*"([^"]+)"', response)
+        hobby_match = re.search(r'"hobby"\s*:\s*"([^"]+)"', response)
+        hobby_label_match = re.search(r'"hobbyLabel"\s*:\s*"([^"]+)"', response)
+        
+        profession = profession_match.group(1) if profession_match else "professional"
+        profession_label = profession_label_match.group(1) if profession_label_match else profession.replace("-", " ").title()
+        hobby = hobby_match.group(1) if hobby_match else "general"
+        hobby_label = hobby_label_match.group(1) if hobby_label_match else hobby.replace("-", " ").title()
+        
+        # Log what was found
+        logger.info(f"🔧 Regex found - profession: {profession_match is not None}, hobby: {hobby_match is not None}")
+        logger.info(f"🔧 Regex extracted: {profession} + {hobby}")
         
         return {
-            "profession": detected_profession,
-            "professionLabel": detected_profession.replace("-", " ").title(),
-            "hobby": detected_hobby,
-            "hobbyLabel": detected_hobby.replace("-", " ").title(),
+            "profession": profession,
+            "professionLabel": profession_label,
+            "hobby": hobby,
+            "hobbyLabel": hobby_label,
             "name": None,
-            "confidence": 0.5
+            "confidence": 0.7
         }
+    
+    async def _simple_parse(self, user_input: str) -> Dict[str, Any]:
+        """Simpler LLM call as final fallback"""
+        prompt = f"""From "{user_input}", tell me:
+1. Their job/profession (one or two words)
+2. Their hobby/interest (one word)
 
+Answer in format: PROFESSION: xxx, HOBBY: xxx"""
+        
+        try:
+            response = await self.call_api(prompt, temperature=0.0, max_tokens=50)
+            
+            import re
+            prof_match = re.search(r'PROFESSION:\s*([^,\n]+)', response, re.IGNORECASE)
+            hobby_match = re.search(r'HOBBY:\s*([^,\n]+)', response, re.IGNORECASE)
+            
+            profession = prof_match.group(1).strip().lower().replace(" ", "-") if prof_match else "professional"
+            hobby = hobby_match.group(1).strip().lower().replace(" ", "-") if hobby_match else "general"
+            
+            logger.info(f"🔧 Simple parse: {profession} + {hobby}")
+            
+            return {
+                "profession": profession,
+                "professionLabel": profession.replace("-", " ").title(),
+                "hobby": hobby,
+                "hobbyLabel": hobby.replace("-", " ").title(),
+                "name": None,
+                "confidence": 0.6
+            }
+        except:
+            # Ultimate fallback
+            return {
+                "profession": "professional",
+                "professionLabel": "Professional",
+                "hobby": "general",
+                "hobbyLabel": "General",
+                "name": None,
+                "confidence": 0.3
+            }
+    
     async def suggest_tools(
         self,
         query: str,
