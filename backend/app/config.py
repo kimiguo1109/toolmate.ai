@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     USE_PROXY: bool = False  # Set to True in .env if needed
     HTTP_PROXY: str = "http://127.0.0.1:7890"  # Configure in .env if needed
     
+    # Database Configuration
+    DATABASE_URL: str = ""  # PostgreSQL connection string
+    
     # Supabase Configuration
     SUPABASE_URL: str = ""  # Set in .env file
     SUPABASE_ANON_KEY: str = ""  # Set in .env file
@@ -49,6 +52,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"  # Allow extra env vars without error
 
 
 @lru_cache()
