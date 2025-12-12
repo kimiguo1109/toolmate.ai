@@ -902,6 +902,90 @@ AI_TOOLS_DATABASE: List[AITool] = [
         api_available=True,
         has_free_tier=True,
     ),
+    
+    # =========================================================================
+    # GAMING TOOLS
+    # =========================================================================
+    AITool(
+        id="discord",
+        name="Discord",
+        description="Voice, video, and text chat platform with AI moderation for gamers.",
+        category=ToolCategory.COMMUNICATION,
+        logo_color="#5865F2",
+        logo_url="https://asset.brandfetch.io/idaSYDn1qQ/id5VXzVct_.svg",
+        website_url="https://discord.com",
+        pricing_type="freemium",
+        price_monthly=0,
+        rating=4.8,
+        tags=["gaming", "voice-chat", "community", "streaming"],
+        professions=["game-designer"],
+        hobbies=["gaming"],
+        cta_text="Join Free",
+        features=["Voice channels", "Screen share", "Bots", "Nitro"],
+        integration_mode=IntegrationMode.FREE_API,
+        api_available=True,
+        has_free_tier=True,
+    ),
+    AITool(
+        id="nvidia-broadcast",
+        name="NVIDIA Broadcast",
+        description="AI-powered streaming app for noise removal and virtual backgrounds.",
+        category=ToolCategory.VIDEO,
+        logo_color="#76B900",
+        logo_url="https://asset.brandfetch.io/idwxFaMVgM/idq4yQFj4T.svg",
+        website_url="https://nvidia.com/broadcast",
+        pricing_type="free",
+        price_monthly=0,
+        rating=4.7,
+        tags=["streaming", "noise-removal", "webcam", "gaming"],
+        professions=["game-designer"],
+        hobbies=["gaming"],
+        cta_text="Download Free",
+        features=["Noise removal", "Virtual background", "Auto frame", "Eye contact"],
+        integration_mode=IntegrationMode.REDIRECT,
+        api_available=False,
+        has_free_tier=True,
+    ),
+    AITool(
+        id="obs-studio",
+        name="OBS Studio",
+        description="Free streaming and recording software with AI scene detection.",
+        category=ToolCategory.VIDEO,
+        logo_color="#302E31",
+        logo_url=None,
+        website_url="https://obsproject.com",
+        pricing_type="free",
+        price_monthly=0,
+        rating=4.9,
+        tags=["streaming", "recording", "gaming", "broadcast"],
+        professions=["game-designer"],
+        hobbies=["gaming"],
+        cta_text="Download Free",
+        features=["Live streaming", "Recording", "Scenes", "Plugins"],
+        integration_mode=IntegrationMode.REDIRECT,
+        api_available=False,
+        has_free_tier=True,
+    ),
+    AITool(
+        id="medal-tv",
+        name="Medal.tv",
+        description="AI-powered game clip recorder that captures your best moments.",
+        category=ToolCategory.VIDEO,
+        logo_color="#F0B90B",
+        logo_url=None,
+        website_url="https://medal.tv",
+        pricing_type="freemium",
+        price_monthly=0,
+        rating=4.6,
+        tags=["clips", "gaming", "recording", "highlights"],
+        professions=[],
+        hobbies=["gaming"],
+        cta_text="Clip Free",
+        features=["Auto-clip", "AI highlights", "Sharing", "GIFs"],
+        integration_mode=IntegrationMode.FREE_API,
+        api_available=True,
+        has_free_tier=True,
+    ),
 ]
 
 
@@ -988,24 +1072,89 @@ class AIToolsService:
     def get_tools_for_profession(self, profession: str, limit: int = 5) -> List[AITool]:
         """
         Get tools relevant to a specific profession
-        Strategy: 1 LLM + rest are vertical tools
+        Strategy: 1-2 LLMs + 2-3 vertical tools = 4 tools
         """
-        # Get 1 LLM
-        llm = self._get_best_llm_for(profession)
+        profession_lower = profession.lower().replace(" ", "-").replace("_", "-")
+        
+        # Normalize profession for matching
+        profession_keywords = profession_lower.split("-")
+        
+        # Get 1-2 LLMs (ChatGPT + one specialized)
+        llms = self._get_llms_for(profession_keywords)
         
         # Get vertical tools
         vertical = [
             tool for tool in self._vertical_tools
-            if profession in tool.professions or 
-               any(p in profession for p in tool.professions)
+            if any(p in profession_lower for p in tool.professions) or
+               any(p in profession_keywords for prof in tool.professions for p in prof.split("-"))
         ]
+        
+        # If no matching vertical tools, get universal productivity tools
+        if not vertical:
+            vertical = self._get_universal_tools(profession_keywords)
+        
         vertical.sort(key=lambda t: (-t.rating, t.price_monthly))
         
-        # Combine: 1 LLM + top vertical tools
-        result = [llm] if llm else []
-        result.extend(vertical[:limit - len(result)])
+        # Combine: 1-2 LLMs + 2-3 vertical tools
+        result = llms[:2]  # Max 2 LLMs
+        remaining = limit - len(result)
+        result.extend(vertical[:remaining])
         
-        return result
+        # Ensure we have at least 4 tools
+        if len(result) < 4:
+            all_tools = sorted(self._vertical_tools, key=lambda t: -t.rating)
+            for tool in all_tools:
+                if tool not in result:
+                    result.append(tool)
+                    if len(result) >= 4:
+                        break
+        
+        return result[:limit]
+    
+    def _get_llms_for(self, keywords: List[str]) -> List[AITool]:
+        """Get 1-2 best LLMs for a profession"""
+        result = []
+        
+        # Always include ChatGPT as primary
+        chatgpt = next((l for l in self._llms if l.id == "chatgpt"), None)
+        if chatgpt:
+            result.append(chatgpt)
+        
+        # Add specialized LLM based on keywords
+        coding_keywords = ["engineer", "developer", "programmer", "coder", "software", "agent", "blockchain", "web3"]
+        design_keywords = ["designer", "creative", "artist", "ui", "ux"]
+        
+        if any(k in keywords for k in coding_keywords):
+            claude = next((l for l in self._llms if l.id == "claude"), None)
+            if claude and claude not in result:
+                result.append(claude)
+        elif any(k in keywords for k in design_keywords):
+            gemini = next((l for l in self._llms if l.id == "gemini"), None)
+            if gemini and gemini not in result:
+                result.append(gemini)
+        
+        # If only 1 LLM, just return it
+        return result[:2]
+    
+    def _get_universal_tools(self, keywords: List[str]) -> List[AITool]:
+        """Get universal productivity tools when no specific match"""
+        universal_ids = []
+        
+        # Check for coding/engineering keywords
+        coding_keywords = ["engineer", "developer", "programmer", "coder", "software", "agent", "blockchain", "web3"]
+        if any(k in keywords for k in coding_keywords):
+            universal_ids = ["cursor", "github-copilot", "linear", "raycast"]
+        # Check for design keywords
+        elif any(k in keywords for k in ["designer", "creative", "artist", "ui", "ux"]):
+            universal_ids = ["figma", "midjourney", "notion", "linear"]
+        # Check for marketing keywords
+        elif any(k in keywords for k in ["marketing", "marketer", "content", "growth"]):
+            universal_ids = ["notion", "canva", "jasper", "linear"]
+        # Default: general productivity
+        else:
+            universal_ids = ["notion", "linear", "raycast", "figma"]
+        
+        return [t for t in self._vertical_tools if t.id in universal_ids]
     
     def _get_best_llm_for(self, profession: str) -> Optional[AITool]:
         """Get the best LLM for a profession"""

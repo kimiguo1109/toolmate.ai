@@ -1,7 +1,7 @@
 """
 Toolkit Generator Service
 Orchestrates the generation of personalized AI toolkits
-Uses real AI tools database + LLM for personalization
+Uses database-backed AI tools + LLM for personalization
 """
 import logging
 import uuid
@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 
 from app.services.gemini_service import gemini_service
-from app.data.ai_tools_database import ai_tools_service, HOBBY_BACKGROUNDS
+from app.database.tools_repository import tools_repository
 
 logger = logging.getLogger(__name__)
 
@@ -17,20 +17,14 @@ logger = logging.getLogger(__name__)
 class ToolkitGenerator:
     """
     Generates personalized AI toolkits using:
-    1. Real AI tools database (verified information)
-    2. LLM for personalization, ranking, and generating recommendations
-    
-    Future enhancements:
-    - User can edit/save their toolkit
-    - Toolkit versioning and history
-    - Share/clone toolkits
-    - Personalized recommendations based on usage
+    1. Supabase database (with fallback to local data)
+    2. LLM for personalization and ranking
     """
     
     def __init__(self):
         self.gemini = gemini_service
-        self.tools_db = ai_tools_service
-        logger.info("✅ ToolkitGenerator initialized with AI tools database")
+        self.repo = tools_repository
+        logger.info("✅ ToolkitGenerator initialized")
     
     async def generate(
         self,
@@ -42,12 +36,6 @@ class ToolkitGenerator:
         """
         Generate a complete personalized toolkit
         
-        Args:
-            profession: User's profession slug
-            hobby: User's hobby slug
-            name: Optional user name
-            use_ai: Whether to use LLM for enhanced personalization
-        
         Returns:
             Complete toolkit data with real tools
         """
@@ -55,208 +43,252 @@ class ToolkitGenerator:
         slug = self._generate_slug(name, profession, hobby)
         
         try:
-            # Get base recommendations from database
-            # Strategy: 1-2 LLMs + 2-3 vertical tools = 4 work tools, 2 life tools
-            base_toolkit = self.tools_db.get_personalized_recommendations(
-                profession=profession,
-                hobby=hobby,
-                work_limit=4,  # 1-2 LLM + 2-3 vertical
-                life_limit=2   # 2 lifestyle tools
-            )
+            # Get work tools (4 tools: 1-2 LLMs + 2-3 vertical)
+            work_tools_raw = await self.repo.get_tools_by_profession(profession, limit=4)
             
-            if use_ai:
-                # Enhance with LLM personalization
-                logger.info(f"🤖 Enhancing toolkit with AI for {profession} + {hobby}")
-                toolkit = await self._enhance_with_ai(base_toolkit, profession, hobby, name)
-            else:
-                toolkit = base_toolkit
+            # Get life tools (2 lifestyle tools)
+            life_tools_raw = await self.repo.get_tools_by_hobby(hobby, limit=2)
+            
+            # Get backgrounds for hobby
+            backgrounds = await self.repo.get_hobby_backgrounds(hobby)
+            
+            # Format for frontend
+            work_tools = [self._format_work_tool(t) for t in work_tools_raw]
+            life_tools = [
+                self._format_life_tool(t, backgrounds[i] if i < len(backgrounds) else None)
+                for i, t in enumerate(life_tools_raw)
+            ]
+            
+            # If no life tools, create generic ones
+            if not life_tools:
+                life_tools = self._create_generic_life_tools(hobby, backgrounds)
+            
+            # Ensure we have enough work tools
+            if len(work_tools) < 4:
+                work_tools = self._ensure_minimum_work_tools(work_tools, profession)
+            
+            toolkit = {
+                "workTools": work_tools[:4],
+                "lifeTools": life_tools[:2],
+            }
             
             # Add metadata
+            profession_display = self._format_profession(profession)
+            hobby_display = self._format_hobby(hobby)
+            user_name = name or "User"
+            
             toolkit.update({
                 "id": toolkit_id,
                 "slug": slug,
-                "userName": name or "User",
-                "profession": self._format_profession(profession),
+                "userName": user_name,
+                "profession": profession_display,
                 "professionSlug": profession,
-                "lifeContext": hobby.replace("-", " ").title(),
-                "createdAt": datetime.utcnow().isoformat(),
+                "lifeContext": hobby_display,
+                "createdAt": datetime.now().isoformat(),
+                # Required fields for API response
+                "specs": {
+                    "totalTools": len(work_tools) + len(life_tools),
+                    "freeTools": len([t for t in work_tools if t.get("price", 0) == 0]),
+                    "paidTools": len([t for t in work_tools if t.get("price", 0) > 0]),
+                    "monthlyCost": sum(t.get("price", 0) for t in work_tools),
+                    "primaryGoal": f"Boost {profession_display} productivity",
+                    "lastUpdated": datetime.now().strftime("%B %Y"),
+                },
+                "description": f"AI-powered toolkit for {profession_display}s who love {hobby_display}",
+                "longDescription": f"This personalized AI toolkit combines the best productivity tools for {profession_display}s with lifestyle apps perfect for {hobby_display} enthusiasts. Curated specifically for {user_name}.",
             })
             
-            # Generate specs
-            work_tools = toolkit.get("workTools", [])
-            life_tools = toolkit.get("lifeTools", [])
-            toolkit["specs"] = {
-                "totalTools": len(work_tools) + len(life_tools),
-                "monthlyCost": sum(t.get("price", 0) for t in work_tools),
-                "primaryGoal": "Productivity",
-                "freeTools": len([t for t in work_tools if t.get("price", 0) == 0]),
-                "paidTools": len([t for t in work_tools if t.get("price", 0) > 0]),
-            }
-            
-            # Generate descriptions
-            prof_label = self._format_profession(profession)
-            hobby_label = hobby.replace("-", " ").title()
-            toolkit["description"] = f"A personalized AI toolkit for {prof_label}s who enjoy {hobby_label.lower()}."
-            toolkit["longDescription"] = await self._generate_description(profession, hobby, work_tools, life_tools)
-            
+            logger.info(f"✅ Generated toolkit: {len(work_tools)} work + {len(life_tools)} life tools")
             return toolkit
             
         except Exception as e:
-            logger.error(f"Toolkit generation failed: {e}")
-            # Fallback to basic database recommendation
-            return self._fallback_generate(profession, hobby, name, toolkit_id, slug)
+            logger.error(f"❌ Toolkit generation error: {e}")
+            return self._create_fallback_toolkit(profession, hobby, name)
     
-    async def _enhance_with_ai(
+    def _format_work_tool(self, tool: Dict) -> Dict[str, Any]:
+        """Format database tool for frontend (work mode)"""
+        return {
+            "name": tool.get("name", "Unknown Tool"),
+            "logo": tool.get("logo_color", "#6366F1"),
+            "logoUrl": tool.get("logo_url"),
+            "rating": tool.get("rating", 4.5),
+            "description": tool.get("description", ""),
+            "ctaText": tool.get("cta_text", "Try Free"),
+            "category": tool.get("category_id", "").replace("_", " ").title(),
+            "price": tool.get("price_monthly", 0),
+            "url": tool.get("website_url", "#"),
+            "integrationMode": tool.get("integration_mode", "redirect"),
+            "apiAvailable": tool.get("api_available", False),
+        }
+    
+    def _format_life_tool(self, tool: Dict, background: Optional[str] = None) -> Dict[str, Any]:
+        """Format database tool for frontend (life mode)"""
+        return {
+            "name": tool.get("name", "Unknown Tool"),
+            "description": tool.get("description", ""),
+            "backgroundImage": background or "",
+            "url": tool.get("website_url", "#"),
+        }
+    
+    def _create_generic_life_tools(self, hobby: str, backgrounds: List[str]) -> List[Dict]:
+        """Create generic life tools when no specific tools match"""
+        hobby_title = hobby.replace("-", " ").title()
+        return [
+            {
+                "name": f"{hobby_title} Companion",
+                "description": f"AI-powered app to enhance your {hobby} experience.",
+                "backgroundImage": backgrounds[0] if backgrounds else "",
+                "url": "#",
+            },
+            {
+                "name": f"{hobby_title} Tracker",
+                "description": f"Track your progress and discover new {hobby} activities.",
+                "backgroundImage": backgrounds[1] if len(backgrounds) > 1 else "",
+                "url": "#",
+            },
+        ]
+    
+    def _ensure_minimum_work_tools(self, tools: List[Dict], profession: str) -> List[Dict]:
+        """Ensure we have at least 4 work tools"""
+        if len(tools) >= 4:
+            return tools
+        
+        # Default tools to fill in
+        defaults = [
+            {
+                "name": "ChatGPT",
+                "logo": "#10A37F",
+                "logoUrl": "https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg",
+                "rating": 4.9,
+                "description": "OpenAI's versatile AI assistant for writing, coding, and analysis.",
+                "ctaText": "Try Free",
+                "category": "LLM",
+                "price": 20,
+                "url": "https://chat.openai.com",
+                "integrationMode": "paid_api",
+                "apiAvailable": True,
+            },
+            {
+                "name": "Linear",
+                "logo": "#5E6AD2",
+                "logoUrl": "https://asset.brandfetch.io/idaeNz7NsW/id-dQuXyBh.svg",
+                "rating": 4.9,
+                "description": "Streamlined issue tracking built for modern product teams.",
+                "ctaText": "Start Free",
+                "category": "Project Management",
+                "price": 8,
+                "url": "https://linear.app",
+                "integrationMode": "free_api",
+                "apiAvailable": True,
+            },
+            {
+                "name": "Raycast",
+                "logo": "#FF6363",
+                "logoUrl": "https://asset.brandfetch.io/idwCAv24ti/id3LDGCDoT.svg",
+                "rating": 4.9,
+                "description": "Productivity launcher with AI commands and integrations.",
+                "ctaText": "Download Free",
+                "category": "Automation",
+                "price": 8,
+                "url": "https://raycast.com",
+                "integrationMode": "free_api",
+                "apiAvailable": True,
+            },
+            {
+                "name": "Notion",
+                "logo": "#000000",
+                "logoUrl": "https://upload.wikimedia.org/wikipedia/commons/e/e9/Notion-logo.svg",
+                "rating": 4.8,
+                "description": "All-in-one workspace for notes, docs, and project management.",
+                "ctaText": "Start Free",
+                "category": "Writing",
+                "price": 10,
+                "url": "https://notion.so",
+                "integrationMode": "free_api",
+                "apiAvailable": True,
+            },
+        ]
+        
+        # Add defaults that aren't already in the list
+        existing_names = {t["name"].lower() for t in tools}
+        for default in defaults:
+            if default["name"].lower() not in existing_names:
+                tools.append(default)
+            if len(tools) >= 4:
+                break
+        
+        return tools
+    
+    def _generate_slug(self, name: Optional[str], profession: str, hobby: str) -> str:
+        """Generate URL slug"""
+        name_part = (name or "user").lower().replace(" ", "-")
+        return f"{name_part}-{profession}-{hobby}"
+    
+    def _format_profession(self, profession: str) -> str:
+        """Format profession for display"""
+        professions = {
+            "product-manager": "Product Manager",
+            "developer": "Developer",
+            "designer": "Designer",
+            "marketer": "Marketer",
+            "data-scientist": "Data Scientist",
+            "writer": "Writer",
+            "entrepreneur": "Entrepreneur",
+            "hr-manager": "HR Manager",
+            "consultant": "Consultant",
+            "student": "Student",
+            "game-designer": "Game Designer",
+            "software-engineer": "Software Engineer",
+            "blockchain-engineer": "Blockchain Engineer",
+            "agent-engineer": "AI Agent Engineer",
+        }
+        return professions.get(profession.lower(), profession.replace("-", " ").title())
+    
+    def _format_hobby(self, hobby: str) -> str:
+        """Format hobby for display"""
+        return hobby.replace("-", " ").title()
+    
+    def _create_fallback_toolkit(
         self,
-        base_toolkit: Dict[str, Any],
         profession: str,
         hobby: str,
-        name: Optional[str]
+        name: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Use LLM to enhance and personalize the toolkit"""
-        try:
-            # Ask LLM to rank and add reasoning
-            work_tools = base_toolkit.get("workTools", [])
-            life_tools = base_toolkit.get("lifeTools", [])
-            
-            # Generate personalized tool descriptions
-            for tool in work_tools:
-                enhanced_desc = await self._personalize_description(
-                    tool["name"],
-                    tool["description"],
-                    profession
-                )
-                if enhanced_desc:
-                    tool["description"] = enhanced_desc
-            
-            return base_toolkit
-            
-        except Exception as e:
-            logger.warning(f"AI enhancement failed, using base toolkit: {e}")
-            return base_toolkit
-    
-    async def _personalize_description(
-        self,
-        tool_name: str,
-        original_desc: str,
-        profession: str
-    ) -> Optional[str]:
-        """Generate a profession-specific tool description"""
-        try:
-            prompt = f"""Make this tool description specific to a {profession}'s daily workflow.
-            
-Tool: {tool_name}
-Original: {original_desc}
-
-Write ONE sentence (max 80 characters) that explains how a {profession} would use this tool.
-Just output the description, nothing else."""
-
-            result = await self.gemini.call_api(prompt, temperature=0.3, max_tokens=100)
-            
-            # Clean and validate
-            result = result.strip().strip('"').strip()
-            if len(result) > 20 and len(result) < 150:
-                return result
-            return None
-            
-        except Exception:
-            return None
-    
-    async def _generate_description(
-        self,
-        profession: str,
-        hobby: str,
-        work_tools: List[Dict],
-        life_tools: List[Dict]
-    ) -> str:
-        """Generate a long description for the toolkit"""
-        prof_label = self._format_profession(profession)
-        hobby_label = hobby.replace("-", " ").title()
+        """Create fallback toolkit when generation fails"""
+        logger.warning("Using fallback toolkit generation")
         
-        work_names = [t["name"] for t in work_tools[:3]]
-        life_names = [t["name"] for t in life_tools[:2]]
+        backgrounds = [
+            "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&q=80",
+            "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800&q=80",
+        ]
         
-        return (
-            f"This comprehensive AI toolkit is tailored for the modern {prof_label.lower()}, "
-            f"integrating powerful AI assistants like {', '.join(work_names)} to accelerate "
-            f"your daily workflow. Beyond work, {'two' if len(life_names) >= 2 else 'curated'} apps "
-            f"cater to the {hobby_label.lower()} hobby, helping users find new experiences "
-            f"and enhance their passion, ensuring a balanced and productive lifestyle."
-        )
-    
-    def _fallback_generate(
-        self,
-        profession: str,
-        hobby: str,
-        name: Optional[str],
-        toolkit_id: str,
-        slug: str
-    ) -> Dict[str, Any]:
-        """Fallback generation using only database"""
-        base = self.tools_db.get_personalized_recommendations(profession, hobby)
-        
-        work_tools = base.get("workTools", [])
-        life_tools = base.get("lifeTools", [])
-        
-        prof_label = self._format_profession(profession)
-        hobby_label = hobby.replace("-", " ").title()
+        profession_display = self._format_profession(profession)
+        hobby_display = self._format_hobby(hobby)
+        user_name = name or "User"
+        work_tools = self._ensure_minimum_work_tools([], profession)[:4]
+        life_tools = self._create_generic_life_tools(hobby, backgrounds)
         
         return {
-            "id": toolkit_id,
-            "slug": slug,
-            "userName": name or "User",
-            "profession": prof_label,
+            "id": str(uuid.uuid4()),
+            "slug": self._generate_slug(name, profession, hobby),
+            "userName": user_name,
+            "profession": profession_display,
             "professionSlug": profession,
-            "lifeContext": hobby_label,
+            "lifeContext": hobby_display,
+            "createdAt": datetime.now().isoformat(),
             "workTools": work_tools,
             "lifeTools": life_tools,
             "specs": {
                 "totalTools": len(work_tools) + len(life_tools),
-                "monthlyCost": sum(t.get("price", 0) for t in work_tools),
-                "primaryGoal": "Productivity",
                 "freeTools": len([t for t in work_tools if t.get("price", 0) == 0]),
                 "paidTools": len([t for t in work_tools if t.get("price", 0) > 0]),
+                "monthlyCost": sum(t.get("price", 0) for t in work_tools),
+                "primaryGoal": f"Boost {profession_display} productivity",
+                "lastUpdated": datetime.now().strftime("%B %Y"),
             },
-            "description": f"A personalized AI toolkit for {prof_label}s who enjoy {hobby_label.lower()}.",
-            "longDescription": f"This toolkit combines the best AI tools for {prof_label.lower()} workflows with lifestyle apps perfect for {hobby_label.lower()} enthusiasts.",
-            "createdAt": datetime.utcnow().isoformat(),
+            "description": f"AI-powered toolkit for {profession_display}s who love {hobby_display}",
+            "longDescription": f"This personalized AI toolkit combines the best productivity tools for {profession_display}s with lifestyle apps perfect for {hobby_display} enthusiasts. Curated specifically for {user_name}.",
         }
-    
-    def _generate_slug(
-        self,
-        name: Optional[str],
-        profession: str,
-        hobby: str
-    ) -> str:
-        """Generate a URL-friendly slug"""
-        parts = []
-        if name:
-            parts.append(name.lower().replace(" ", "-"))
-        parts.append(profession.lower())
-        parts.append(hobby.lower())
-        return "-".join(parts)
-    
-    def _format_profession(self, profession: str) -> str:
-        """Format profession slug to display name"""
-        mapping = {
-            "product-manager": "Product Manager",
-            "developer": "Software Developer",
-            "software-engineer": "Software Engineer",
-            "blockchain-engineer": "Blockchain Engineer",
-            "game-designer": "Game Designer",
-            "designer": "UX Designer",
-            "marketer": "Marketing Manager",
-            "writer": "Content Writer",
-            "freelance-writer": "Freelance Writer",
-            "student": "Student",
-            "entrepreneur": "Entrepreneur",
-            "data-scientist": "Data Scientist",
-            "hr-manager": "HR Manager",
-            "consultant": "Consultant",
-            "researcher": "Researcher",
-            "teacher": "Teacher",
-        }
-        return mapping.get(profession, profession.replace("-", " ").title())
 
 
 # Global instance

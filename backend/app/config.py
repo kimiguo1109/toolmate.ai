@@ -41,12 +41,9 @@ class Settings(BaseSettings):
     USE_PROXY: bool = False  # Set to True in .env if needed
     HTTP_PROXY: str = "http://127.0.0.1:7890"  # Configure in .env if needed
     
-    # Database Configuration
-    DATABASE_URL: str = ""  # PostgreSQL connection string
-    
     # Supabase Configuration
-    SUPABASE_URL: str = ""  # Set in .env file
-    SUPABASE_ANON_KEY: str = ""  # Set in .env file
+    SUPABASE_URL: str = "https://yyqksparqhxtzememxat.supabase.co"
+    SUPABASE_ANON_KEY: str = ""  # Set in .env file (public anon key)
     
     class Config:
         env_file = ".env"
