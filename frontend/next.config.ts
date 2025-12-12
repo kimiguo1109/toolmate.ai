@@ -27,6 +27,14 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "*.githubusercontent.com",
       },
+      {
+        protocol: "https",
+        hostname: "asset.brandfetch.io",  // Tool logos
+      },
+      {
+        protocol: "https",
+        hostname: "*.brandfetch.io",
+      },
     ],
   },
 };

@@ -9,6 +9,7 @@ interface HeroToolCardProps {
     name: string;
     description: string;
     backgroundImage: string;
+    url?: string;  // Tool website URL for redirection
   };
 }
 
@@ -28,11 +29,18 @@ export function HeroToolCard({ tool }: HeroToolCardProps) {
   const fallbackIndex = tool.name.charCodeAt(0) % FALLBACK_GRADIENTS.length;
   const fallbackGradient = FALLBACK_GRADIENTS[fallbackIndex];
 
+  const handleLearnMore = () => {
+    if (tool.url) {
+      window.open(tool.url, "_blank", "noopener,noreferrer");
+    }
+  };
+
   return (
     <motion.article
-      className="group relative flex flex-col justify-end min-h-[200px] rounded-xl overflow-hidden p-6 text-white shadow-lg"
+      className="group relative flex flex-col justify-end min-h-[200px] rounded-xl overflow-hidden p-6 text-white shadow-lg cursor-pointer"
       whileHover={{ scale: 1.02 }}
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      onClick={handleLearnMore}
     >
       {/* Background Image with Fallback */}
       {!imageError && tool.backgroundImage ? (
@@ -47,7 +55,7 @@ export function HeroToolCard({ tool }: HeroToolCardProps) {
             fill
             className="object-cover"
             onError={() => setImageError(true)}
-            unoptimized // Allow external URLs
+            unoptimized
           />
         </motion.div>
       ) : (
@@ -59,7 +67,7 @@ export function HeroToolCard({ tool }: HeroToolCardProps) {
         />
       )}
 
-      {/* Gradient Overlay - stronger for readability */}
+      {/* Gradient Overlay */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/20" />
 
       {/* Content */}
@@ -72,11 +80,16 @@ export function HeroToolCard({ tool }: HeroToolCardProps) {
         <h3 className="text-xl font-bold drop-shadow-lg">{tool.name}</h3>
         <p className="mt-1 text-sm max-w-md opacity-90 line-clamp-2 drop-shadow">{tool.description}</p>
         <motion.button
-          className="mt-4 rounded-full bg-white/20 backdrop-blur-sm text-white text-sm font-semibold py-2 px-4 border border-white/30"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleLearnMore();
+          }}
+          className="mt-4 rounded-full bg-white/20 backdrop-blur-sm text-white text-sm font-semibold py-2 px-4 border border-white/30 inline-flex items-center gap-2"
           whileHover={{ backgroundColor: "rgba(255, 255, 255, 0.3)", scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
           Learn More
+          <span className="material-symbols-outlined text-sm">open_in_new</span>
         </motion.button>
       </motion.div>
     </motion.article>

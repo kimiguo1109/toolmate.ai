@@ -26,11 +26,13 @@ class WorkTool(BaseModel):
     """Work mode tool"""
     name: str
     logo: str
+    logoUrl: Optional[str] = None  # Actual logo image URL
     rating: float
     description: str
     ctaText: str
     category: str
     price: float
+    url: Optional[str] = None  # Tool website URL for redirection
 
 
 class LifeTool(BaseModel):
@@ -38,6 +40,7 @@ class LifeTool(BaseModel):
     name: str
     description: str
     backgroundImage: str
+    url: Optional[str] = None  # Tool website URL for redirection
 
 
 class ToolkitSpecs(BaseModel):

@@ -56,11 +56,12 @@ class ToolkitGenerator:
         
         try:
             # Get base recommendations from database
+            # Strategy: 1-2 LLMs + 2-3 vertical tools = 4 work tools, 2 life tools
             base_toolkit = self.tools_db.get_personalized_recommendations(
                 profession=profession,
                 hobby=hobby,
-                work_limit=4,
-                life_limit=2
+                work_limit=4,  # 1-2 LLM + 2-3 vertical
+                life_limit=2   # 2 lifestyle tools
             )
             
             if use_ai:
